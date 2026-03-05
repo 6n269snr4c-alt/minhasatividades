@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -51,6 +53,8 @@ const firebaseConfig = {
   messagingSenderId: "232760630413",
   appId: "1:232760630413:web:6acc8f79226c3823c816c4"
 };
+
+// Evita inicializar o app múltiplas vezes no Next.js/React Strict Mode
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);

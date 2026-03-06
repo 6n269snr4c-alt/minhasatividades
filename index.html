@@ -82,6 +82,25 @@
         const Compress = (props) => <Icon name="fa-solid fa-compress" {...props} />;
         const WhatsApp = (props) => <Icon name="fa-brands fa-whatsapp" {...props} />;
         const LinkIcon = (props) => <Icon name="fa-solid fa-link" {...props} />;
+        const NetworkWired = (props) => <Icon name="fa-solid fa-network-wired" {...props} />;
+        const Paperclip = (props) => <Icon name="fa-solid fa-paperclip" {...props} />;
+        const AlignLeft = (props) => <Icon name="fa-solid fa-align-left" {...props} />;
+        const Trophy = (props) => <Icon name="fa-solid fa-trophy" {...props} />;
+        const History = (props) => <Icon name="fa-solid fa-clock-rotate-left" {...props} />;
+        const CalendarCheck = (props) => <Icon name="fa-regular fa-calendar-check" {...props} />;
+        const Flag = (props) => <Icon name="fa-solid fa-flag" {...props} />;
+
+        // --- Utilitários de Data ---
+        const getLocalYYYYMMDD = () => {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        };
+
+        const parseLocal = (ds) => {
+            if (!ds) return null;
+            const [y, m, d] = ds.split('-');
+            return new Date(y, m - 1, d);
+        };
 
         // --- Identidade Visual ---
         const CATEGORIES = [
@@ -100,11 +119,12 @@
             const [customCategories, setCustomCategories] = useState([]);
             const [view, setView] = useState('projects'); 
             const [expandedProjects, setExpandedProjects] = useState([]);
+            const [projectTabs, setProjectTabs] = useState({}); // Controle Aba Iniciativas/Timeline
             const [isSubmitting, setIsSubmitting] = useState(false);
             const [searchTerm, setSearchTerm] = useState('');
             const [categoryFilter, setCategoryFilter] = useState('all');
 
-            // --- Estados dos Modais (Atualizados para suportar Edição) ---
+            // --- Estados dos Modais ---
             const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
             
             const [contactModal, setContactModal] = useState({ 
@@ -114,12 +134,12 @@
 
             const [initiativeModal, setInitiativeModal] = useState({ 
                 isOpen: false, mode: 'create', projectId: '', 
-                data: { id: '', title: '' } 
+                data: { id: '', title: '', notes: '', attachmentUrl: '' } 
             });
 
             const [taskModal, setTaskModal] = useState({ 
                 isOpen: false, mode: 'create', projectId: '', initiativeId: '', 
-                data: { id: '', text: '', dueDate: '' } 
+                data: { id: '', text: '', dueDate: '', notes: '', attachmentUrl: '', completed: false, completedAt: '' } 
             });
 
             const [categoryModal, setCategoryModal] = useState({ isOpen: false, label: '' });
@@ -172,7 +192,7 @@
                 };
             }, [user]);
 
-            // --- CONTATOS (Criar, Editar, Excluir) ---
+            // --- CONTATOS ---
             const openCreateContact = () => {
                 setContactModal({ isOpen: true, mode: 'create', data: { id: '', name: '', objective: '', category: 'p_cliente', phone: '', linkedContactId: '' } });
             };
@@ -220,13 +240,16 @@
                 });
             };
 
-            // --- INICIATIVAS (Criar, Editar, Excluir) ---
+            // --- INICIATIVAS ---
             const openCreateInitiative = (projectId) => {
-                setInitiativeModal({ isOpen: true, mode: 'create', projectId, data: { id: '', title: '' } });
+                setInitiativeModal({ isOpen: true, mode: 'create', projectId, data: { id: '', title: '', notes: '', attachmentUrl: '' } });
             };
 
             const openEditInitiative = (projectId, initiative) => {
-                setInitiativeModal({ isOpen: true, mode: 'edit', projectId, data: { id: initiative.id, title: initiative.title } });
+                setInitiativeModal({ 
+                    isOpen: true, mode: 'edit', projectId, 
+                    data: { id: initiative.id, title: initiative.title, notes: initiative.notes || '', attachmentUrl: initiative.attachmentUrl || '' } 
+                });
             };
 
             const handleSaveInitiative = async () => {
@@ -236,10 +259,23 @@
                 let updatedInitiatives;
                 
                 if (initiativeModal.mode === 'create') {
-                    const newInit = { id: Date.now().toString(), title: initiativeModal.data.title, status: 'Aberto', date: new Date().toLocaleDateString('pt-BR'), checklist: [] };
+                    const newInit = { 
+                        id: Date.now().toString(), 
+                        title: initiativeModal.data.title, 
+                        notes: initiativeModal.data.notes,
+                        attachmentUrl: initiativeModal.data.attachmentUrl,
+                        status: 'Aberto', 
+                        date: new Date().toLocaleDateString('pt-BR'), 
+                        checklist: [] 
+                    };
                     updatedInitiatives = [...(project.initiatives || []), newInit];
                 } else {
-                    updatedInitiatives = project.initiatives.map(i => i.id === initiativeModal.data.id ? { ...i, title: initiativeModal.data.title } : i);
+                    updatedInitiatives = project.initiatives.map(i => i.id === initiativeModal.data.id ? { 
+                        ...i, 
+                        title: initiativeModal.data.title,
+                        notes: initiativeModal.data.notes,
+                        attachmentUrl: initiativeModal.data.attachmentUrl 
+                    } : i);
                 }
                 
                 await db.collection('projects').doc(initiativeModal.projectId).update({ initiatives: updatedInitiatives });
@@ -269,13 +305,16 @@
                 await db.collection('projects').doc(projectId).update({ initiatives: updatedInitiatives });
             };
 
-            // --- TAREFAS (Criar, Editar, Excluir) ---
+            // --- TAREFAS ---
             const openCreateTask = (projectId, initiativeId) => {
-                setTaskModal({ isOpen: true, mode: 'create', projectId, initiativeId, data: { id: '', text: '', dueDate: '' } });
+                setTaskModal({ isOpen: true, mode: 'create', projectId, initiativeId, data: { id: '', text: '', dueDate: '', notes: '', attachmentUrl: '', completed: false, completedAt: '' } });
             };
 
             const openEditTask = (projectId, initiativeId, task) => {
-                setTaskModal({ isOpen: true, mode: 'edit', projectId, initiativeId, data: { id: task.id, text: task.text, dueDate: task.dueDate || '' } });
+                setTaskModal({ 
+                    isOpen: true, mode: 'edit', projectId, initiativeId, 
+                    data: { id: task.id, text: task.text, dueDate: task.dueDate || '', notes: task.notes || '', attachmentUrl: task.attachmentUrl || '', completed: !!task.completed, completedAt: task.completedAt || '' } 
+                });
             };
 
             const handleSaveTask = async () => {
@@ -287,10 +326,26 @@
                     if (init.id === taskModal.initiativeId) {
                         let updatedChecklist;
                         if (taskModal.mode === 'create') {
-                            const newTask = { id: Date.now().toString(), text: taskModal.data.text, dueDate: taskModal.data.dueDate, completed: false };
+                            const newTask = { 
+                                id: Date.now().toString(), 
+                                text: taskModal.data.text, 
+                                dueDate: taskModal.data.dueDate, 
+                                notes: taskModal.data.notes,
+                                attachmentUrl: taskModal.data.attachmentUrl,
+                                completed: taskModal.data.completed,
+                                completedAt: taskModal.data.completed ? (taskModal.data.completedAt || getLocalYYYYMMDD()) : null
+                            };
                             updatedChecklist = [...(init.checklist || []), newTask];
                         } else {
-                            updatedChecklist = init.checklist.map(t => t.id === taskModal.data.id ? { ...t, text: taskModal.data.text, dueDate: taskModal.data.dueDate } : t);
+                            updatedChecklist = init.checklist.map(t => t.id === taskModal.data.id ? { 
+                                ...t, 
+                                text: taskModal.data.text, 
+                                dueDate: taskModal.data.dueDate,
+                                notes: taskModal.data.notes,
+                                attachmentUrl: taskModal.data.attachmentUrl,
+                                completed: taskModal.data.completed,
+                                completedAt: taskModal.data.completed ? (taskModal.data.completedAt || getLocalYYYYMMDD()) : null
+                            } : t);
                         }
                         return { ...init, checklist: updatedChecklist };
                     }
@@ -324,7 +379,17 @@
                 const project = projects.find(p => p.id === projectId);
                 const updatedInitiatives = project.initiatives.map(init => {
                     if (init.id === initiativeId) {
-                        return { ...init, checklist: init.checklist.map(item => item.id === itemId ? { ...item, completed: !item.completed } : item) };
+                        return { ...init, checklist: init.checklist.map(item => {
+                            if (item.id === itemId) {
+                                const isCompleting = !item.completed;
+                                return {
+                                    ...item,
+                                    completed: isCompleting,
+                                    completedAt: isCompleting ? getLocalYYYYMMDD() : null
+                                };
+                            }
+                            return item;
+                        }) };
                     }
                     return init;
                 });
@@ -343,7 +408,6 @@
                 if (!phone) return null;
                 const numbers = phone.replace(/\D/g, '');
                 if(numbers.length < 10) return null;
-                // Adiciona o 55 caso o usuário não tenha digitado o código do país, apenas o DDD
                 const finalNumber = numbers.startsWith('55') ? numbers : `55${numbers}`;
                 return `https://wa.me/${finalNumber}`;
             };
@@ -368,6 +432,27 @@
 
             const allCategories = [...CATEGORIES, ...customCategories.map(c => ({ ...c, icon: Tag }))];
             const getCategoryData = (catId) => allCategories.find(c => c.id === catId) || allCategories[3];
+
+            // --- NETWORKING DATA ---
+            const getNetworkingStats = () => {
+                const referrers = projects.map(p => {
+                    const indicatedByMe = projects.filter(other => other.linkedContactId === p.id);
+                    return {
+                        id: p.id,
+                        name: p.name,
+                        category: p.category,
+                        referralCount: indicatedByMe.length,
+                        referredContacts: indicatedByMe
+                    };
+                }).filter(p => p.referralCount > 0).sort((a, b) => b.referralCount - a.referralCount);
+
+                const totalContacts = projects.length;
+                const referredContactsTotal = projects.filter(p => p.linkedContactId).length;
+                const referralPercentage = totalContacts > 0 ? Math.round((referredContactsTotal / totalContacts) * 100) : 0;
+
+                return { referrers, totalContacts, referredContactsTotal, referralPercentage };
+            };
+            const netStats = getNetworkingStats();
 
             // --- RENDER ---
             if (isAuthChecking) return <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center"><Loader2 size={40} className="text-[#00E08F]" /></div>;
@@ -433,8 +518,11 @@
                                     <Users size={20} /> <span className="hidden md:block">Meus Contatos</span>
                                 </button>
                                 <button onClick={() => setView('tasks')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'tasks' ? 'bg-[#104c57] text-[#00E08F] font-bold border-l-4 border-[#00E08F]' : 'text-slate-400 hover:bg-[#104c57]/50 hover:text-white'}`}>
-                                    <CheckSquare size={20} /> <span className="hidden md:block">Checklist Geral</span>
+                                    <CheckSquare size={20} /> <span className="hidden md:block">Checklist</span>
                                     {allPendingTasks.length > 0 && <span className="ml-auto bg-[#00E08F] text-[#082f37] font-bold text-[10px] px-2 py-0.5 rounded-full hidden md:block">{allPendingTasks.length}</span>}
+                                </button>
+                                <button onClick={() => setView('networking')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'networking' ? 'bg-[#104c57] text-[#00E08F] font-bold border-l-4 border-[#00E08F]' : 'text-slate-400 hover:bg-[#104c57]/50 hover:text-white'}`}>
+                                    <NetworkWired size={20} /> <span className="hidden md:block">Networking</span>
                                 </button>
                             </div>
                         </div>
@@ -448,180 +536,287 @@
                     <main className="flex-1 p-4 md:p-10 overflow-x-hidden w-full">
                         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                             <div className="flex-1">
-                                <h2 className="text-2xl md:text-3xl font-extrabold text-[#082f37] tracking-tight">{view === 'projects' ? 'Painel de Atividades' : 'Tarefas Pendentes'}</h2>
+                                <h2 className="text-2xl md:text-3xl font-extrabold text-[#082f37] tracking-tight">
+                                    {view === 'projects' ? 'Painel de Atividades' : view === 'tasks' ? 'Tarefas Pendentes' : 'Rede de Contatos'}
+                                </h2>
                                 <div className="flex items-center gap-2 text-slate-500 mt-1 text-xs md:text-sm font-medium">
                                     <Clock size={14} className="text-[#00E08F]" /> <span>Sincronizado com a nuvem</span>
                                 </div>
                             </div>
                             
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-                                <div className="relative w-full sm:w-auto">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                    <input type="text" placeholder="Pesquisar..." className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00E08F]/50 focus:border-[#082f37] w-full transition-all shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                            {view === 'projects' && (
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                                    <div className="relative w-full sm:w-auto">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <input type="text" placeholder="Pesquisar..." className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00E08F]/50 focus:border-[#082f37] w-full transition-all shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                                    </div>
+                                    <button onClick={openCreateContact} className="bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00E08F]/20 transition-all active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap">
+                                        <Plus size={20} /> Novo Contato
+                                    </button>
                                 </div>
-                                <button onClick={openCreateContact} className="bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00E08F]/20 transition-all active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap">
-                                    <Plus size={20} /> Novo Contato
-                                </button>
-                            </div>
+                            )}
                         </header>
 
+                        {/* --- VIEW: PROJECTS (CONTATOS) --- */}
                         {view === 'projects' && (
-                            <div className="flex flex-wrap gap-2 mb-8 items-center text-sm font-medium justify-between">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <div className="flex items-center gap-2 text-slate-500 mr-2"><Filter size={16} /> <span>Filtrar:</span></div>
-                                    <button onClick={() => setCategoryFilter('all')} className={`px-4 py-1.5 rounded-lg border transition-all ${categoryFilter === 'all' ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>Todos</button>
-                                    {allCategories.map(cat => (
-                                        <button key={cat.id} onClick={() => setCategoryFilter(cat.id)} className={`px-4 py-1.5 rounded-lg border transition-all flex items-center gap-2 ${categoryFilter === cat.id ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
-                                            <cat.icon size={14} /> {cat.label}
-                                        </button>
-                                    ))}
-                                </div>
-                                {expandedProjects.length > 0 && (
-                                    <button onClick={() => setExpandedProjects([])} className="text-[#082f37] bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors ml-auto">
-                                        <Compress size={14} /> Recolher Todos
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
-                        {view === 'projects' ? (
-                            <div className="grid grid-cols-1 gap-6">
-                                {filteredProjects.length === 0 ? (
-                                    <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-16 text-center text-slate-400">
-                                        <Users size={48} className="mx-auto mb-4 opacity-20 text-[#082f37]" />
-                                        <p className="text-lg">Nenhum registo encontrado.</p>
+                            <>
+                                <div className="flex flex-wrap gap-2 mb-8 items-center text-sm font-medium justify-between">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <div className="flex items-center gap-2 text-slate-500 mr-2"><Filter size={16} /> <span>Filtrar:</span></div>
+                                        <button onClick={() => setCategoryFilter('all')} className={`px-4 py-1.5 rounded-lg border transition-all ${categoryFilter === 'all' ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>Todos</button>
+                                        {allCategories.map(cat => (
+                                            <button key={cat.id} onClick={() => setCategoryFilter(cat.id)} className={`px-4 py-1.5 rounded-lg border transition-all flex items-center gap-2 ${categoryFilter === cat.id ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                                                <cat.icon size={14} /> {cat.label}
+                                            </button>
+                                        ))}
                                     </div>
-                                ) : (
-                                    filteredProjects.map(project => {
-                                        const catData = getCategoryData(project.category);
-                                        const waLink = getWhatsAppLink(project.phone);
-                                        const linkedProject = project.linkedContactId ? projects.find(p => p.id === project.linkedContactId) : null;
-                                        const isExpanded = expandedProjects.includes(project.id);
+                                    {expandedProjects.length > 0 && (
+                                        <button onClick={() => setExpandedProjects([])} className="text-[#082f37] bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors ml-auto">
+                                            <Compress size={14} /> Recolher Todos
+                                        </button>
+                                    )}
+                                </div>
 
-                                        return (
-                                            <div key={project.id} className={`group bg-white border ${isExpanded ? 'border-[#00E08F]/50 shadow-md' : 'border-slate-200 shadow-sm hover:shadow-lg hover:border-[#00E08F]/30'} rounded-2xl transition-all duration-300`}>
-                                                <div className="p-5 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer" onClick={() => setExpandedProjects(prev => prev.includes(project.id) ? prev.filter(id => id !== project.id) : [...prev, project.id])}>
-                                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center bg-[#082f37]/5 text-[#082f37] border border-[#082f37]/10 shrink-0`}>
-                                                        <catData.icon size={26} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center flex-wrap gap-3 mb-1">
-                                                            <h3 className="font-extrabold text-xl text-[#082f37] truncate">{project.name}</h3>
-                                                            <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border ${catData.color}`}>{catData.label}</span>
-                                                            {waLink && (
-                                                                <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-green-500 hover:text-green-600 bg-green-50 p-1.5 rounded-full transition-colors ml-auto md:ml-0" title="Conversar no WhatsApp">
-                                                                    <WhatsApp size={16} />
-                                                                </a>
+                                <div className="grid grid-cols-1 gap-6">
+                                    {filteredProjects.length === 0 ? (
+                                        <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-16 text-center text-slate-400">
+                                            <Users size={48} className="mx-auto mb-4 opacity-20 text-[#082f37]" />
+                                            <p className="text-lg">Nenhum registo encontrado.</p>
+                                        </div>
+                                    ) : (
+                                        filteredProjects.map(project => {
+                                            const catData = getCategoryData(project.category);
+                                            const waLink = getWhatsAppLink(project.phone);
+                                            const linkedProject = project.linkedContactId ? projects.find(p => p.id === project.linkedContactId) : null;
+                                            const isExpanded = expandedProjects.includes(project.id);
+                                            const activeTab = projectTabs[project.id] || 'initiatives';
+
+                                            // Cálculo de Último e Próximo Contato
+                                            let lastContact = null;
+                                            let nextContact = null;
+                                            const allTasks = project.initiatives?.flatMap(i => i.checklist || []) || [];
+                                            
+                                            const completedDates = allTasks
+                                                .filter(t => t.completed && (t.completedAt || t.dueDate))
+                                                .map(t => parseLocal(t.completedAt || t.dueDate).getTime());
+                                            if (completedDates.length > 0) {
+                                                lastContact = new Date(Math.max(...completedDates)).toLocaleDateString('pt-BR');
+                                            }
+
+                                            const pendingDates = allTasks
+                                                .filter(t => !t.completed && t.dueDate)
+                                                .map(t => parseLocal(t.dueDate).getTime());
+                                            if (pendingDates.length > 0) {
+                                                nextContact = new Date(Math.min(...pendingDates)).toLocaleDateString('pt-BR');
+                                            }
+
+                                            return (
+                                                <div key={project.id} className={`group bg-white border ${isExpanded ? 'border-[#00E08F]/50 shadow-md' : 'border-slate-200 shadow-sm hover:shadow-lg hover:border-[#00E08F]/30'} rounded-2xl transition-all duration-300`}>
+                                                    <div className="p-5 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer" onClick={() => setExpandedProjects(prev => prev.includes(project.id) ? prev.filter(id => id !== project.id) : [...prev, project.id])}>
+                                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center bg-[#082f37]/5 text-[#082f37] border border-[#082f37]/10 shrink-0`}>
+                                                            <catData.icon size={26} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center flex-wrap gap-3 mb-1">
+                                                                <h3 className="font-extrabold text-xl text-[#082f37] truncate">{project.name}</h3>
+                                                                <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border ${catData.color}`}>{catData.label}</span>
+                                                                {waLink && (
+                                                                    <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-green-500 hover:text-green-600 bg-green-50 p-1.5 rounded-full transition-colors ml-auto md:ml-0" title="Conversar no WhatsApp">
+                                                                        <WhatsApp size={16} />
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-slate-500 text-sm truncate">{project.objective}</p>
+                                                            {linkedProject && (
+                                                                <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1.5 font-medium">
+                                                                    <LinkIcon size={10} /> Vinculado a: 
+                                                                    <span className="text-[#082f37] hover:underline" onClick={(e) => { e.stopPropagation(); setExpandedProjects([linkedProject.id]); }}>{linkedProject.name}</span>
+                                                                </div>
                                                             )}
                                                         </div>
-                                                        <p className="text-slate-500 text-sm truncate">{project.objective}</p>
-                                                        {linkedProject && (
-                                                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1.5 font-medium">
-                                                                <LinkIcon size={10} /> Vinculado a: 
-                                                                <span className="text-[#082f37] hover:underline" onClick={(e) => { e.stopPropagation(); setExpandedProjects([linkedProject.id]); }}>{linkedProject.name}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-6 mt-3 md:mt-0">
-                                                        <div className="text-center md:border-l border-slate-200 md:pl-6">
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Iniciativas</p>
-                                                            <p className="text-xl font-extrabold text-[#082f37]">{(project.initiatives || []).length}</p>
-                                                        </div>
-                                                        <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg">
-                                                            <button onClick={(e) => { e.stopPropagation(); openEditContact(project); }} className="p-2 text-slate-400 hover:text-blue-500 transition-colors" title="Editar Contato"><Edit2 size={16} /></button>
-                                                            <button onClick={(e) => { e.stopPropagation(); deleteProject(project.id); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="Excluir Contato"><Trash2 size={16} /></button>
-                                                            <div className={`p-2 text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-[#082f37]' : ''}`}><ChevronDown size={18}/></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {isExpanded && (
-                                                    <div className="px-5 pb-5 pt-2 border-t border-slate-100 bg-[#f8fafc] space-y-4 rounded-b-2xl">
-                                                        <div className="flex items-center justify-between pt-2">
-                                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                                                <LayoutDashboard size={14} className="text-[#00E08F]" /> Iniciativas Ativas ({project.name})
-                                                            </h4>
-                                                        </div>
-                                                        
-                                                        {project.initiatives?.map(init => (
-                                                            <div key={init.id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm group/init">
-                                                                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <button onClick={() => toggleInitiativeStatus(project.id, init.id)} className={`p-1 rounded-md transition-all ${init.status === 'Concluído' ? 'bg-[#00E08F] text-[#082f37]' : 'bg-slate-50 text-slate-300 border border-slate-200 hover:border-[#082f37]'}`}>
-                                                                            {init.status === 'Concluído' ? <Check size={16} /> : <div className="w-4 h-4" />}
-                                                                        </button>
-                                                                        <div>
-                                                                            <h4 className={`font-bold ${init.status === 'Concluído' ? 'text-slate-400 line-through' : 'text-[#082f37]'}`}>{init.title}</h4>
-                                                                            <p className="text-[10px] text-slate-400 font-medium">Criada em {init.date}</p>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="opacity-0 group-hover/init:opacity-100 transition-opacity flex items-center bg-slate-50 rounded-lg">
-                                                                            <button onClick={() => openEditInitiative(project.id, init)} className="p-1.5 text-slate-400 hover:text-blue-500" title="Editar Iniciativa"><Edit2 size={14} /></button>
-                                                                            <button onClick={() => confirmDeleteInitiative(project.id, init.id)} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir Iniciativa"><Trash2 size={14} /></button>
-                                                                        </div>
-                                                                        <button onClick={() => openCreateTask(project.id, init.id)} className="text-[11px] bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-[#082f37] font-bold hover:bg-[#00E08F]/10 hover:border-[#00E08F] flex items-center gap-1 transition-all shadow-sm">
-                                                                            <Plus size={14} /> Tarefa
-                                                                        </button>
-                                                                    </div>
+                                                        <div className="flex flex-wrap items-center gap-4 mt-3 md:mt-0">
+                                                            {/* Resumo de Datas (Último e Próximo) */}
+                                                            <div className="hidden lg:flex flex-col gap-1 md:border-l border-slate-200 md:pl-6">
+                                                                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+                                                                    <CalendarCheck size={12} className={lastContact ? 'text-[#00E08F]' : 'text-slate-300'} /> 
+                                                                    Último: <span className="text-slate-700">{lastContact || '--/--/----'}</span>
                                                                 </div>
+                                                                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+                                                                    <Flag size={12} className={nextContact ? 'text-amber-500' : 'text-slate-300'} /> 
+                                                                    Próximo: <span className="text-slate-700">{nextContact || '--/--/----'}</span>
+                                                                </div>
+                                                            </div>
 
-                                                                <div className="ml-9 space-y-2 border-l-2 border-slate-100 pl-4">
-                                                                    {init.checklist?.length === 0 && <p className="text-xs text-slate-400 italic py-1">Nenhuma tarefa nesta iniciativa.</p>}
-                                                                    {init.checklist?.map(item => {
-                                                                        let isOverdue = false;
-                                                                        let isToday = false;
-                                                                        if (item.dueDate && !item.completed) {
-                                                                            const today = new Date();
-                                                                            today.setHours(0,0,0,0);
-                                                                            const [y, m, d] = item.dueDate.split('-');
-                                                                            const dueDate = new Date(y, m - 1, d);
-                                                                            if (dueDate < today) isOverdue = true;
-                                                                            if (dueDate.getTime() === today.getTime()) isToday = true;
-                                                                        }
-                                                                        
-                                                                        return (
-                                                                            <div key={item.id} className="flex flex-col py-1 group/task relative">
-                                                                                <div className="flex items-start gap-3 w-full pr-16">
-                                                                                    <button onClick={() => toggleChecklistItem(project.id, init.id, item.id)} className={`mt-0.5 transition-all ${item.completed ? 'text-[#00E08F]' : 'text-slate-300 hover:text-[#082f37]'}`}>
-                                                                                        {item.completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                                            <div className="text-center md:border-l border-slate-200 md:pl-6 md:pr-4">
+                                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Iniciativas</p>
+                                                                <p className="text-xl font-extrabold text-[#082f37]">{(project.initiatives || []).length}</p>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg ml-auto md:ml-0">
+                                                                <button onClick={(e) => { e.stopPropagation(); openEditContact(project); }} className="p-2 text-slate-400 hover:text-blue-500 transition-colors" title="Editar Contato"><Edit2 size={16} /></button>
+                                                                <button onClick={(e) => { e.stopPropagation(); deleteProject(project.id); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="Excluir Contato"><Trash2 size={16} /></button>
+                                                                <div className={`p-2 text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-[#082f37]' : ''}`}><ChevronDown size={18}/></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {isExpanded && (
+                                                        <div className="px-5 pb-5 pt-2 border-t border-slate-100 bg-[#f8fafc] rounded-b-2xl">
+                                                            <div className="flex items-center gap-6 border-b border-slate-200 mb-6">
+                                                                <button onClick={() => setProjectTabs(prev => ({...prev, [project.id]: 'initiatives'}))} className={`pb-3 text-sm font-bold transition-all border-b-2 ${activeTab === 'initiatives' ? 'border-[#00E08F] text-[#082f37]' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                                                                    <LayoutDashboard size={14} className="inline mr-1" /> Iniciativas Ativas
+                                                                </button>
+                                                                <button onClick={() => setProjectTabs(prev => ({...prev, [project.id]: 'timeline'}))} className={`pb-3 text-sm font-bold transition-all border-b-2 ${activeTab === 'timeline' ? 'border-[#00E08F] text-[#082f37]' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                                                                    <History size={14} className="inline mr-1" /> Linha do Tempo
+                                                                </button>
+                                                            </div>
+
+                                                            {activeTab === 'initiatives' && (
+                                                                <div className="space-y-4">
+                                                                    {project.initiatives?.map(init => (
+                                                                        <div key={init.id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm group/init">
+                                                                            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                                                                <div className="flex items-center gap-3 w-full sm:w-auto flex-1">
+                                                                                    <button onClick={() => toggleInitiativeStatus(project.id, init.id)} className={`p-1 rounded-md transition-all shrink-0 ${init.status === 'Concluído' ? 'bg-[#00E08F] text-[#082f37]' : 'bg-slate-50 text-slate-300 border border-slate-200 hover:border-[#082f37]'}`}>
+                                                                                        {init.status === 'Concluído' ? <Check size={16} /> : <div className="w-4 h-4" />}
                                                                                     </button>
-                                                                                    <div className="flex-1">
-                                                                                        <span className={`text-sm block ${item.completed ? 'text-slate-400 line-through italic' : 'text-slate-700 font-medium'}`}>{item.text}</span>
-                                                                                        {item.dueDate && (
-                                                                                            <span className={`text-[10px] font-bold mt-1 flex items-center gap-1 ${item.completed ? 'text-slate-300' : isOverdue ? 'text-red-500' : isToday ? 'text-amber-500' : 'text-slate-400'}`}>
-                                                                                                {isOverdue && !item.completed ? <AlertTriangle size={10} /> : <CalendarDays size={10} />}
-                                                                                                {item.dueDate.split('-').reverse().join('/')}
-                                                                                                {isOverdue && !item.completed && ' (Atrasada)'}
-                                                                                                {isToday && !item.completed && ' (Hoje)'}
-                                                                                            </span>
-                                                                                        )}
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <h4 className={`font-bold truncate ${init.status === 'Concluído' ? 'text-slate-400 line-through' : 'text-[#082f37]'}`}>{init.title}</h4>
+                                                                                        <p className="text-[10px] text-slate-400 font-medium">Criada em {init.date}</p>
                                                                                     </div>
                                                                                 </div>
-                                                                                {/* Ações da Tarefa (Aparece no hover no Desktop, fica discreto no Mobile) */}
-                                                                                <div className="absolute right-0 top-1 md:opacity-0 group-hover/task:opacity-100 transition-opacity flex items-center bg-white md:bg-slate-50 shadow-sm border border-slate-100 rounded-md">
-                                                                                    <button onClick={() => openEditTask(project.id, init.id, item)} className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors"><Edit2 size={12} /></button>
-                                                                                    <div className="w-px h-3 bg-slate-200"></div>
-                                                                                    <button onClick={() => confirmDeleteTask(project.id, init.id, item.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+                                                                                <div className="flex items-center gap-2 ml-auto">
+                                                                                    <div className="opacity-0 group-hover/init:opacity-100 transition-opacity flex items-center bg-slate-50 rounded-lg">
+                                                                                        <button onClick={() => openEditInitiative(project.id, init)} className="p-1.5 text-slate-400 hover:text-blue-500" title="Editar Iniciativa"><Edit2 size={14} /></button>
+                                                                                        <button onClick={() => confirmDeleteInitiative(project.id, init.id)} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir Iniciativa"><Trash2 size={14} /></button>
+                                                                                    </div>
+                                                                                    <button onClick={() => openCreateTask(project.id, init.id)} className="text-[11px] bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-[#082f37] font-bold hover:bg-[#00E08F]/10 hover:border-[#00E08F] flex items-center gap-1 transition-all shadow-sm">
+                                                                                        <Plus size={14} /> Tarefa
+                                                                                    </button>
                                                                                 </div>
                                                                             </div>
-                                                                        )
-                                                                    })}
+                                                                            
+                                                                            {/* Observações da Iniciativa */}
+                                                                            {(init.notes || init.attachmentUrl) && (
+                                                                                <div className="mb-4 ml-9 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex flex-col gap-1.5">
+                                                                                    {init.notes && (
+                                                                                        <div className="flex gap-2 items-start">
+                                                                                            <AlignLeft size={12} className="mt-0.5 shrink-0 text-slate-400" /> 
+                                                                                            <span className="whitespace-pre-wrap">{init.notes}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {init.attachmentUrl && (
+                                                                                        <a href={init.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-[#00E08F] hover:text-[#00c980] font-bold flex items-center gap-1 w-fit mt-1">
+                                                                                            <Paperclip size={12} /> Ver Anexo
+                                                                                        </a>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+
+                                                                            <div className="ml-9 space-y-2 border-l-2 border-slate-100 pl-4">
+                                                                                {init.checklist?.length === 0 && <p className="text-xs text-slate-400 italic py-1">Nenhuma tarefa nesta iniciativa.</p>}
+                                                                                {init.checklist?.map(item => {
+                                                                                    let isOverdue = false;
+                                                                                    let isToday = false;
+                                                                                    if (item.dueDate && !item.completed) {
+                                                                                        const today = new Date();
+                                                                                        today.setHours(0,0,0,0);
+                                                                                        const [y, m, d] = item.dueDate.split('-');
+                                                                                        const dueDate = new Date(y, m - 1, d);
+                                                                                        if (dueDate < today) isOverdue = true;
+                                                                                        if (dueDate.getTime() === today.getTime()) isToday = true;
+                                                                                    }
+                                                                                    
+                                                                                    return (
+                                                                                        <div key={item.id} className="flex flex-col py-1.5 group/task relative">
+                                                                                            <div className="flex items-start gap-3 w-full pr-16">
+                                                                                                <button onClick={() => toggleChecklistItem(project.id, init.id, item.id)} className={`mt-0.5 transition-all shrink-0 ${item.completed ? 'text-[#00E08F]' : 'text-slate-300 hover:text-[#082f37]'}`}>
+                                                                                                    {item.completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                                                                                </button>
+                                                                                                <div className="flex-1 min-w-0">
+                                                                                                    <span className={`text-sm block ${item.completed ? 'text-slate-400 line-through italic' : 'text-slate-700 font-medium'}`}>{item.text}</span>
+                                                                                                    
+                                                                                                    {/* Extras da Tarefa (Data, Notas, Anexo) */}
+                                                                                                    <div className="flex flex-col gap-1 mt-1">
+                                                                                                        {item.dueDate && (
+                                                                                                            <span className={`text-[10px] font-bold flex items-center gap-1 w-fit ${item.completed ? 'text-slate-300' : isOverdue ? 'text-red-500' : isToday ? 'text-amber-500' : 'text-slate-400'}`}>
+                                                                                                                {isOverdue && !item.completed ? <AlertTriangle size={10} /> : <CalendarDays size={10} />}
+                                                                                                                {item.dueDate.split('-').reverse().join('/')}
+                                                                                                                {isOverdue && !item.completed && ' (Atrasada)'}
+                                                                                                                {isToday && !item.completed && ' (Hoje)'}
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                        {(item.notes || item.attachmentUrl) && (
+                                                                                                            <div className="text-[11px] text-slate-500 flex flex-col gap-1 mt-1">
+                                                                                                                {item.notes && <div className="flex gap-1.5 items-start"><AlignLeft size={10} className="mt-0.5 shrink-0" /> <span className="whitespace-pre-wrap">{item.notes}</span></div>}
+                                                                                                                {item.attachmentUrl && <a href={item.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-[#00E08F] hover:text-[#00c980] flex items-center gap-1 w-fit font-bold"><Paperclip size={10} /> Link do Anexo</a>}
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            {/* Ações da Tarefa */}
+                                                                                            <div className="absolute right-0 top-1 md:opacity-0 group-hover/task:opacity-100 transition-opacity flex items-center bg-white md:bg-slate-50 shadow-sm border border-slate-100 rounded-md">
+                                                                                                <button onClick={() => openEditTask(project.id, init.id, item)} className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors"><Edit2 size={12} /></button>
+                                                                                                <div className="w-px h-3 bg-slate-200"></div>
+                                                                                                <button onClick={() => confirmDeleteTask(project.id, init.id, item.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                    
+                                                                    <button onClick={() => openCreateInitiative(project.id)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold hover:border-[#00E08F] hover:text-[#082f37] hover:bg-white transition-all flex items-center justify-center gap-2 mt-2">
+                                                                        <Plus size={20} /> Nova Iniciativa de Trabalho
+                                                                    </button>
                                                                 </div>
-                                                            </div>
-                                                        ))}
-                                                        
-                                                        <button onClick={() => openCreateInitiative(project.id)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold hover:border-[#00E08F] hover:text-[#082f37] hover:bg-white transition-all flex items-center justify-center gap-2 mt-2">
-                                                            <Plus size={20} /> Nova Iniciativa de Trabalho
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        ) : (
+                                                            )}
+
+                                                            {activeTab === 'timeline' && (
+                                                                <div className="relative border-l-2 border-slate-200 ml-3 space-y-6 pb-4 pt-2">
+                                                                    {(() => {
+                                                                        const history = project.initiatives?.flatMap(init => 
+                                                                            (init.checklist || []).filter(t => t.completed).map(t => ({
+                                                                                ...t,
+                                                                                initiativeTitle: init.title,
+                                                                                sortDate: (t.completedAt || t.dueDate) ? parseLocal(t.completedAt || t.dueDate).getTime() : new Date(project.createdAt).getTime(),
+                                                                                displayDate: t.completedAt ? t.completedAt.split('-').reverse().join('/') : (t.dueDate ? t.dueDate.split('-').reverse().join('/') : 'Concluída')
+                                                                            }))
+                                                                        ).sort((a, b) => b.sortDate - a.sortDate) || [];
+
+                                                                        if (history.length === 0) return <p className="ml-6 text-sm text-slate-400 italic">Nenhuma atividade registada.</p>;
+
+                                                                        return history.map(item => (
+                                                                            <div key={item.id} className="relative pl-6 group">
+                                                                                <div className="absolute w-3.5 h-3.5 bg-[#00E08F] rounded-full -left-[9px] top-1.5 ring-4 ring-[#f8fafc]"></div>
+                                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                                        <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                                                                            <CalendarCheck size={10} /> {item.displayDate}
+                                                                                        </span>
+                                                                                        <span className="text-[10px] font-bold text-[#082f37] uppercase tracking-widest truncate">{item.initiativeTitle}</span>
+                                                                                    </div>
+                                                                                    <p className="text-sm font-bold text-slate-800">{item.text}</p>
+                                                                                    {item.notes && <p className="text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100"><AlignLeft size={10} className="inline mr-1" /> {item.notes}</p>}
+                                                                                </div>
+                                                                            </div>
+                                                                        ));
+                                                                    })()}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {/* --- VIEW: TASKS --- */}
+                        {view === 'tasks' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                                 <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-[#082f37]/5">
                                     <h2 className="font-extrabold text-lg flex items-center gap-2 text-[#082f37]"><CheckSquare size={22} className="text-[#00E08F]" /> Checklist de Execução</h2>
@@ -679,9 +874,90 @@
                                 </div>
                             </div>
                         )}
+
+                        {/* --- VIEW: NETWORKING --- */}
+                        {view === 'networking' && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                {/* Cards de Estatísticas */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center shrink-0"><Users size={24} /></div>
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total de Contatos</p>
+                                            <p className="text-2xl font-extrabold text-[#082f37]">{netStats.totalContacts}</p>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-[#00E08F]/20 text-[#082f37] rounded-full flex items-center justify-center shrink-0"><LinkIcon size={24} /></div>
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vieram por Indicação</p>
+                                            <p className="text-2xl font-extrabold text-[#082f37]">{netStats.referredContactsTotal}</p>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center shrink-0"><Trophy size={24} /></div>
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Taxa de Indicação</p>
+                                            <p className="text-2xl font-extrabold text-[#082f37]">{netStats.referralPercentage}%</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Ranking de Promotores */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="p-6 border-b border-slate-100 flex items-center gap-3 bg-[#082f37]/5">
+                                        <NetworkWired size={20} className="text-[#00E08F]" />
+                                        <h2 className="font-extrabold text-lg text-[#082f37]">Maiores Promotores (Ranking)</h2>
+                                    </div>
+                                    
+                                    <div className="p-6">
+                                        {netStats.referrers.length === 0 ? (
+                                            <div className="text-center py-10">
+                                                <NetworkWired size={48} className="mx-auto mb-4 text-slate-200" />
+                                                <p className="text-slate-500 font-medium">Nenhum vínculo de indicação criado ainda.</p>
+                                                <p className="text-sm text-slate-400 mt-2">Ao adicionar um contato, preencha o campo "Indicado por".</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-6">
+                                                {netStats.referrers.map((referrer, index) => {
+                                                    const catData = getCategoryData(referrer.category);
+                                                    return (
+                                                        <div key={referrer.id} className="flex flex-col md:flex-row md:items-start gap-4 p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                                                            <div className="flex items-center gap-4 md:w-1/3">
+                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${index === 0 ? 'bg-amber-100 text-amber-600' : index === 1 ? 'bg-slate-200 text-slate-500' : index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-[#082f37]/10 text-[#082f37]'}`}>
+                                                                    {index + 1}º
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-bold text-[#082f37] text-lg">{referrer.name}</p>
+                                                                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${catData.color}`}>{catData.label}</span>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="flex-1 md:border-l md:border-slate-200 md:pl-6">
+                                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                                    <Users size={12} /> {referrer.referralCount} {referrer.referralCount === 1 ? 'Contato Indicado' : 'Contatos Indicados'}:
+                                                                </p>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {referrer.referredContacts.map(rc => (
+                                                                        <span key={rc.id} onClick={() => { setView('projects'); setExpandedProjects([rc.id]); }} className="bg-white border border-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-lg shadow-sm font-medium hover:border-[#00E08F] cursor-pointer transition-colors">
+                                                                            {rc.name}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </main>
 
-                    {/* MODAL: CONTATO (CRIAR E EDITAR) */}
+                    {/* MODAIS */}
+                    {/* MODAL: CONTATO */}
                     {contactModal.isOpen && (
                         <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-white rounded-3xl w-full max-w-lg overflow-y-auto max-h-[90vh] shadow-2xl no-scrollbar">
@@ -738,12 +1014,25 @@
                         </div>
                     )}
 
-                    {/* MODAL: INICIATIVA (CRIAR E EDITAR) */}
+                    {/* MODAL: INICIATIVA */}
                     {initiativeModal.isOpen && (
                         <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
                             <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl">
                                 <h3 className="font-extrabold text-[#082f37] mb-6 text-xl">{initiativeModal.mode === 'create' ? 'Nova Iniciativa' : 'Editar Iniciativa'}</h3>
-                                <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all mb-6 font-medium text-slate-800" placeholder="Ex: Proposta Comercial" value={initiativeModal.data.title} onChange={e => setInitiativeModal({...initiativeModal, data: {...initiativeModal.data, title: e.target.value}})} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveInitiative(); }} />
+                                <div className="space-y-4 mb-6">
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Título da Iniciativa</label>
+                                        <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" placeholder="Ex: Proposta Comercial" value={initiativeModal.data.title} onChange={e => setInitiativeModal({...initiativeModal, data: {...initiativeModal.data, title: e.target.value}})} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Observações / Feedback</label>
+                                        <textarea className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800 text-sm" placeholder="Opcional..." rows="2" value={initiativeModal.data.notes} onChange={e => setInitiativeModal({...initiativeModal, data: {...initiativeModal.data, notes: e.target.value}})}></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Link do Anexo (Drive, Dropbox, etc)</label>
+                                        <input type="url" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800 text-sm" placeholder="https://..." value={initiativeModal.data.attachmentUrl} onChange={e => setInitiativeModal({...initiativeModal, data: {...initiativeModal.data, attachmentUrl: e.target.value}})} />
+                                    </div>
+                                </div>
                                 <div className="flex gap-3">
                                     <button onClick={() => setInitiativeModal({...initiativeModal, isOpen: false})} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all">Cancelar</button>
                                     <button onClick={handleSaveInitiative} disabled={!initiativeModal.data.title} className="flex-1 px-4 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20 disabled:opacity-50">Salvar</button>
@@ -752,7 +1041,7 @@
                         </div>
                     )}
 
-                    {/* MODAL: TAREFA (CRIAR E EDITAR) */}
+                    {/* MODAL: TAREFA */}
                     {taskModal.isOpen && (
                         <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
                             <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl">
@@ -762,9 +1051,40 @@
                                         <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">O que precisa ser feito?</label>
                                         <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" placeholder="Ex: Agendar reunião de alinhamento" value={taskModal.data.text} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, text: e.target.value}})} />
                                     </div>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Previsão (Opcional)</label>
+                                            <input type="date" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" value={taskModal.data.dueDate} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, dueDate: e.target.value}})} />
+                                        </div>
+                                    </div>
                                     <div>
-                                        <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Previsão de Conclusão (Opcional)</label>
-                                        <input type="date" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" value={taskModal.data.dueDate} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, dueDate: e.target.value}})} />
+                                        <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Observações Adicionais</label>
+                                        <textarea className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800 text-sm" placeholder="Detalhes, orientações..." rows="2" value={taskModal.data.notes} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, notes: e.target.value}})}></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Link do Anexo (Opcional)</label>
+                                        <input type="url" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800 text-sm" placeholder="https://..." value={taskModal.data.attachmentUrl} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, attachmentUrl: e.target.value}})} />
+                                    </div>
+
+                                    <div className="pt-2 border-t border-slate-100">
+                                        <label className="flex items-center gap-3 cursor-pointer mb-3">
+                                            <div className="relative">
+                                                <input type="checkbox" className="sr-only" checked={taskModal.data.completed} onChange={e => {
+                                                    const isChecked = e.target.checked;
+                                                    setTaskModal(prev => ({...prev, data: {...prev.data, completed: isChecked, completedAt: isChecked ? (prev.data.completedAt || getLocalYYYYMMDD()) : ''}}));
+                                                }} />
+                                                <div className={`block w-10 h-6 rounded-full transition-colors ${taskModal.data.completed ? 'bg-[#00E08F]' : 'bg-slate-200'}`}></div>
+                                                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${taskModal.data.completed ? 'translate-x-4' : ''}`}></div>
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-700">Tarefa Concluída?</span>
+                                        </label>
+
+                                        {taskModal.data.completed && (
+                                            <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <label className="block text-xs font-bold uppercase text-[#00E08F] tracking-widest mb-2">Data Exata da Conclusão (Retroativo)</label>
+                                                <input type="date" className="w-full px-4 py-3 bg-[#00E08F]/10 border border-[#00E08F]/30 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-bold text-[#082f37]" value={taskModal.data.completedAt} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, completedAt: e.target.value}})} />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex gap-3">
@@ -803,22 +1123,26 @@
                         </div>
                     )}
 
-                    {/* Menu Inferior Mobile */}
-                    <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 flex justify-around items-center p-3 z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] pb-safe">
-                        <button onClick={() => setView('projects')} className={`flex flex-col items-center gap-1 p-2 w-20 transition-all ${view === 'projects' ? 'text-[#00E08F]' : 'text-slate-400'}`}>
-                            <Users size={24} className={view === 'projects' ? 'drop-shadow-sm text-[#082f37]' : ''} />
-                            <span className={`text-[10px] font-bold ${view === 'projects' ? 'text-[#082f37]' : ''}`}>Contatos</span>
+                    {/* Menu Inferior Mobile (com Networking adicionado) */}
+                    <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 flex justify-around items-center p-2 z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] pb-safe">
+                        <button onClick={() => setView('projects')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-all ${view === 'projects' ? 'text-[#00E08F]' : 'text-slate-400'}`}>
+                            <Users size={22} className={view === 'projects' ? 'drop-shadow-sm text-[#082f37]' : ''} />
+                            <span className={`text-[9px] font-bold ${view === 'projects' ? 'text-[#082f37]' : ''}`}>Contatos</span>
                         </button>
-                        <button onClick={() => setView('tasks')} className={`flex flex-col items-center gap-1 p-2 w-20 relative transition-all ${view === 'tasks' ? 'text-[#00E08F]' : 'text-slate-400'}`}>
+                        <button onClick={() => setView('tasks')} className={`flex flex-col items-center gap-1 p-2 w-16 relative transition-all ${view === 'tasks' ? 'text-[#00E08F]' : 'text-slate-400'}`}>
                             <div className="relative">
-                                <CheckSquare size={24} className={view === 'tasks' ? 'drop-shadow-sm text-[#082f37]' : ''} />
-                                {allPendingTasks.length > 0 && <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white shadow-sm">{allPendingTasks.length}</span>}
+                                <CheckSquare size={22} className={view === 'tasks' ? 'drop-shadow-sm text-[#082f37]' : ''} />
+                                {allPendingTasks.length > 0 && <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white shadow-sm">{allPendingTasks.length}</span>}
                             </div>
-                            <span className={`text-[10px] font-bold ${view === 'tasks' ? 'text-[#082f37]' : ''}`}>Tarefas</span>
+                            <span className={`text-[9px] font-bold ${view === 'tasks' ? 'text-[#082f37]' : ''}`}>Tarefas</span>
                         </button>
-                        <button onClick={() => auth.signOut()} className="flex flex-col items-center gap-1 p-2 w-20 text-slate-400 hover:text-red-500 transition-all">
-                            <LogOut size={24} />
-                            <span className="text-[10px] font-bold">Sair</span>
+                        <button onClick={() => setView('networking')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-all ${view === 'networking' ? 'text-[#00E08F]' : 'text-slate-400'}`}>
+                            <NetworkWired size={22} className={view === 'networking' ? 'drop-shadow-sm text-[#082f37]' : ''} />
+                            <span className={`text-[9px] font-bold ${view === 'networking' ? 'text-[#082f37]' : ''}`}>Rede</span>
+                        </button>
+                        <button onClick={() => auth.signOut()} className="flex flex-col items-center gap-1 p-2 w-16 text-slate-400 hover:text-red-500 transition-all">
+                            <LogOut size={22} />
+                            <span className="text-[9px] font-bold">Sair</span>
                         </button>
                     </nav>
                 </div>

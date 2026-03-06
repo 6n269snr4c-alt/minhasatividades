@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Matheus Duarte | Consultoria</title>
+    <title>Matheus Duarte | Consultoria Estratégica</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -26,6 +26,9 @@
     <style>
         /* Ajustes mobile */
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        /* Esconde barra de rolagem mas permite rolar */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-[#f1f5f9] text-slate-900">
@@ -50,7 +53,7 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        // --- Adaptador de Ícones (Substituindo Lucide por FontAwesome) ---
+        // --- Adaptador de Ícones (FontAwesome) ---
         const Icon = ({ name, size = 16, className = '' }) => <i className={`${name} ${className}`} style={{ fontSize: size }}></i>;
         const Briefcase = (props) => <Icon name="fa-solid fa-briefcase" {...props} />;
         const UserPlus = (props) => <Icon name="fa-solid fa-user-plus" {...props} />;
@@ -64,7 +67,7 @@
         const Trash2 = (props) => <Icon name="fa-solid fa-trash-can" {...props} />;
         const ChevronDown = (props) => <Icon name="fa-solid fa-chevron-down" {...props} />;
         const ChevronRight = (props) => <Icon name="fa-solid fa-chevron-right" {...props} />;
-        const LayoutDashboard = (props) => <Icon name="fa-solid fa-table-columns" {...props} />;
+        const LayoutDashboard = (props) => <Icon name="fa-solid fa-layer-group" {...props} />;
         const Check = (props) => <Icon name="fa-solid fa-check" {...props} />;
         const CheckCircle2 = (props) => <Icon name="fa-solid fa-circle-check" {...props} />;
         const Circle = (props) => <Icon name="fa-regular fa-circle" {...props} />;
@@ -75,6 +78,10 @@
         const Mail = (props) => <Icon name="fa-solid fa-envelope" {...props} />;
         const Lock = (props) => <Icon name="fa-solid fa-lock" {...props} />;
         const Tag = (props) => <Icon name="fa-solid fa-tag" {...props} />;
+        const Edit2 = (props) => <Icon name="fa-solid fa-pen" {...props} />;
+        const Compress = (props) => <Icon name="fa-solid fa-compress" {...props} />;
+        const WhatsApp = (props) => <Icon name="fa-brands fa-whatsapp" {...props} />;
+        const LinkIcon = (props) => <Icon name="fa-solid fa-link" {...props} />;
 
         // --- Identidade Visual ---
         const CATEGORIES = [
@@ -93,19 +100,31 @@
             const [customCategories, setCustomCategories] = useState([]);
             const [view, setView] = useState('projects'); 
             const [expandedProjects, setExpandedProjects] = useState([]);
-            const [isModalOpen, setIsModalOpen] = useState(false);
             const [isSubmitting, setIsSubmitting] = useState(false);
-            const [newProject, setNewProject] = useState({ name: '', objective: '', category: 'p_cliente' });
             const [searchTerm, setSearchTerm] = useState('');
             const [categoryFilter, setCategoryFilter] = useState('all');
 
-            const [inputModal, setInputModal] = useState({ isOpen: false, title: '', placeholder: '', onSubmit: null });
-            const [inputValue, setInputValue] = useState('');
+            // --- Estados dos Modais (Atualizados para suportar Edição) ---
             const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
-            const [taskModal, setTaskModal] = useState({ isOpen: false, projectId: '', initiativeId: '' });
-            const [taskForm, setTaskForm] = useState({ text: '', dueDate: '' });
+            
+            const [contactModal, setContactModal] = useState({ 
+                isOpen: false, mode: 'create', 
+                data: { id: '', name: '', objective: '', category: 'p_cliente', phone: '', linkedContactId: '' } 
+            });
 
-            // Auth Logic
+            const [initiativeModal, setInitiativeModal] = useState({ 
+                isOpen: false, mode: 'create', projectId: '', 
+                data: { id: '', title: '' } 
+            });
+
+            const [taskModal, setTaskModal] = useState({ 
+                isOpen: false, mode: 'create', projectId: '', initiativeId: '', 
+                data: { id: '', text: '', dueDate: '' } 
+            });
+
+            const [categoryModal, setCategoryModal] = useState({ isOpen: false, label: '' });
+
+            // --- Auth Logic ---
             useEffect(() => {
                 const unsubscribe = auth.onAuthStateChanged((currentUser) => {
                     setUser(currentUser);
@@ -124,7 +143,7 @@
                         await auth.createUserWithEmailAndPassword(authForm.email, authForm.password);
                     }
                 } catch (error) {
-                    let errorMsg = 'Erro na autenticação. Verifique seus dados.';
+                    let errorMsg = 'Erro na autenticação. Verifique os seus dados.';
                     if (error.code === 'auth/invalid-credential') errorMsg = 'E-mail ou senha incorretos.';
                     if (error.code === 'auth/email-already-in-use') errorMsg = 'Este e-mail já está em uso.';
                     if (error.code === 'auth/weak-password') errorMsg = 'A senha deve ter pelo menos 6 caracteres.';
@@ -134,7 +153,7 @@
                 }
             };
 
-            // Data Fetching
+            // --- Data Fetching ---
             useEffect(() => {
                 if (!user) return;
                 
@@ -153,123 +172,183 @@
                 };
             }, [user]);
 
-            // Handlers
-            const handleAddProject = async () => {
-                if (!newProject.name || !user || isSubmitting) return;
+            // --- CONTATOS (Criar, Editar, Excluir) ---
+            const openCreateContact = () => {
+                setContactModal({ isOpen: true, mode: 'create', data: { id: '', name: '', objective: '', category: 'p_cliente', phone: '', linkedContactId: '' } });
+            };
+
+            const openEditContact = (project) => {
+                setContactModal({ isOpen: true, mode: 'edit', data: { ...project, phone: project.phone || '', linkedContactId: project.linkedContactId || '' } });
+            };
+
+            const handleSaveContact = async () => {
+                if (!contactModal.data.name || !user || isSubmitting) return;
                 setIsSubmitting(true);
                 try {
-                    await db.collection('projects').add({
-                        name: newProject.name,
-                        objective: newProject.objective,
-                        category: newProject.category,
-                        status: 'Ativo',
-                        createdAt: new Date().toISOString(),
-                        initiatives: [] 
-                    });
-                    setIsModalOpen(false);
-                    setNewProject({ name: '', objective: '', category: 'p_cliente' });
+                    const payload = {
+                        name: contactModal.data.name,
+                        objective: contactModal.data.objective,
+                        category: contactModal.data.category,
+                        phone: contactModal.data.phone,
+                        linkedContactId: contactModal.data.linkedContactId
+                    };
+
+                    if (contactModal.mode === 'create') {
+                        await db.collection('projects').add({
+                            ...payload,
+                            status: 'Ativo',
+                            createdAt: new Date().toISOString(),
+                            initiatives: [] 
+                        });
+                    } else {
+                        await db.collection('projects').doc(contactModal.data.id).update(payload);
+                    }
+                    setContactModal(prev => ({...prev, isOpen: false}));
                 } catch (e) {
-                    console.error("Erro ao criar projeto:", e);
+                    console.error("Erro ao salvar contato:", e);
                 } finally {
                     setIsSubmitting(false);
                 }
             };
 
-            const addInitiative = (projectId) => {
-                setInputValue('');
-                setInputModal({
+            const deleteProject = (id) => {
+                setConfirmModal({
                     isOpen: true,
-                    title: 'Nova Iniciativa Estratégica',
-                    placeholder: 'Ex: Apresentar Proposta Comercial',
-                    onSubmit: async (title) => {
-                        if (!title) return;
+                    title: 'Excluir Contato',
+                    message: 'Isso apagará o contato e todas as suas iniciativas e tarefas. Não pode ser desfeito. Continuar?',
+                    onConfirm: async () => await db.collection('projects').doc(id).delete()
+                });
+            };
+
+            // --- INICIATIVAS (Criar, Editar, Excluir) ---
+            const openCreateInitiative = (projectId) => {
+                setInitiativeModal({ isOpen: true, mode: 'create', projectId, data: { id: '', title: '' } });
+            };
+
+            const openEditInitiative = (projectId, initiative) => {
+                setInitiativeModal({ isOpen: true, mode: 'edit', projectId, data: { id: initiative.id, title: initiative.title } });
+            };
+
+            const handleSaveInitiative = async () => {
+                if (!initiativeModal.data.title || isSubmitting) return;
+                setIsSubmitting(true);
+                const project = projects.find(p => p.id === initiativeModal.projectId);
+                let updatedInitiatives;
+                
+                if (initiativeModal.mode === 'create') {
+                    const newInit = { id: Date.now().toString(), title: initiativeModal.data.title, status: 'Aberto', date: new Date().toLocaleDateString('pt-BR'), checklist: [] };
+                    updatedInitiatives = [...(project.initiatives || []), newInit];
+                } else {
+                    updatedInitiatives = project.initiatives.map(i => i.id === initiativeModal.data.id ? { ...i, title: initiativeModal.data.title } : i);
+                }
+                
+                await db.collection('projects').doc(initiativeModal.projectId).update({ initiatives: updatedInitiatives });
+                setInitiativeModal(prev => ({...prev, isOpen: false}));
+                setIsSubmitting(false);
+            };
+
+            const confirmDeleteInitiative = (projectId, initiativeId) => {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Excluir Iniciativa',
+                    message: 'Tem certeza que deseja apagar esta iniciativa e todas as suas tarefas?',
+                    onConfirm: async () => {
                         const project = projects.find(p => p.id === projectId);
-                        const newInitiative = { id: Date.now().toString(), title, status: 'Aberto', date: new Date().toLocaleDateString('pt-BR'), checklist: [] };
-                        await db.collection('projects').doc(projectId).update({ 
-                            initiatives: [...(project.initiatives || []), newInitiative] 
-                        });
+                        const updatedInitiatives = project.initiatives.filter(i => i.id !== initiativeId);
+                        await db.collection('projects').doc(projectId).update({ initiatives: updatedInitiatives });
                     }
                 });
             };
 
-            const openTaskModal = (projectId, initiativeId) => {
-                setTaskForm({ text: '', dueDate: '' });
-                setTaskModal({ isOpen: true, projectId, initiativeId });
+            const toggleInitiativeStatus = async (projectId, initiativeId) => {
+                const project = projects.find(p => p.id === projectId);
+                const updatedInitiatives = project.initiatives.map(init => {
+                    if (init.id === initiativeId) return { ...init, status: init.status === 'Concluído' ? 'Aberto' : 'Concluído' };
+                    return init;
+                });
+                await db.collection('projects').doc(projectId).update({ initiatives: updatedInitiatives });
             };
 
-            const handleAddTask = async () => {
-                if (!taskForm.text) return;
+            // --- TAREFAS (Criar, Editar, Excluir) ---
+            const openCreateTask = (projectId, initiativeId) => {
+                setTaskModal({ isOpen: true, mode: 'create', projectId, initiativeId, data: { id: '', text: '', dueDate: '' } });
+            };
+
+            const openEditTask = (projectId, initiativeId, task) => {
+                setTaskModal({ isOpen: true, mode: 'edit', projectId, initiativeId, data: { id: task.id, text: task.text, dueDate: task.dueDate || '' } });
+            };
+
+            const handleSaveTask = async () => {
+                if (!taskModal.data.text || isSubmitting) return;
+                setIsSubmitting(true);
                 const project = projects.find(p => p.id === taskModal.projectId);
+                
                 const updatedInitiatives = project.initiatives.map(init => {
                     if (init.id === taskModal.initiativeId) {
-                        return { 
-                            ...init, 
-                            checklist: [...(init.checklist || []), { 
-                                id: Date.now().toString(), 
-                                text: taskForm.text, 
-                                dueDate: taskForm.dueDate, 
-                                completed: false 
-                            }] 
-                        };
+                        let updatedChecklist;
+                        if (taskModal.mode === 'create') {
+                            const newTask = { id: Date.now().toString(), text: taskModal.data.text, dueDate: taskModal.data.dueDate, completed: false };
+                            updatedChecklist = [...(init.checklist || []), newTask];
+                        } else {
+                            updatedChecklist = init.checklist.map(t => t.id === taskModal.data.id ? { ...t, text: taskModal.data.text, dueDate: taskModal.data.dueDate } : t);
+                        }
+                        return { ...init, checklist: updatedChecklist };
                     }
                     return init;
                 });
+
                 await db.collection('projects').doc(taskModal.projectId).update({ initiatives: updatedInitiatives });
-                setTaskModal({ isOpen: false, projectId: '', initiativeId: '' });
+                setTaskModal(prev => ({...prev, isOpen: false}));
+                setIsSubmitting(false);
+            };
+
+            const confirmDeleteTask = (projectId, initiativeId, taskId) => {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Excluir Tarefa',
+                    message: 'Deseja remover esta tarefa do checklist?',
+                    onConfirm: async () => {
+                        const project = projects.find(p => p.id === projectId);
+                        const updatedInitiatives = project.initiatives.map(init => {
+                            if (init.id === initiativeId) {
+                                return { ...init, checklist: init.checklist.filter(t => t.id !== taskId) };
+                            }
+                            return init;
+                        });
+                        await db.collection('projects').doc(projectId).update({ initiatives: updatedInitiatives });
+                    }
+                });
             };
 
             const toggleChecklistItem = async (projectId, initiativeId, itemId) => {
                 const project = projects.find(p => p.id === projectId);
                 const updatedInitiatives = project.initiatives.map(init => {
                     if (init.id === initiativeId) {
-                        const updatedChecklist = init.checklist.map(item => {
-                            if (item.id === itemId) return { ...item, completed: !item.completed };
-                            return item;
-                        });
-                        return { ...init, checklist: updatedChecklist };
+                        return { ...init, checklist: init.checklist.map(item => item.id === itemId ? { ...item, completed: !item.completed } : item) };
                     }
                     return init;
                 });
                 await db.collection('projects').doc(projectId).update({ initiatives: updatedInitiatives });
             };
 
-            const toggleInitiativeStatus = async (projectId, initiativeId) => {
-                const project = projects.find(p => p.id === projectId);
-                const updatedInitiatives = project.initiatives.map(init => {
-                    if (init.id === initiativeId) {
-                        return { ...init, status: init.status === 'Concluído' ? 'Aberto' : 'Concluído' };
-                    }
-                    return init;
-                });
-                await db.collection('projects').doc(projectId).update({ initiatives: updatedInitiatives });
+            // --- CATEGORIA CUSTOMIZADA ---
+            const handleAddCustomCategory = async () => {
+                if (!categoryModal.label) return;
+                await db.collection('categories').add({ label: categoryModal.label, color: 'bg-slate-100 text-[#082f37] border-slate-300' });
+                setCategoryModal({ isOpen: false, label: '' });
             };
 
-            const deleteProject = (id) => {
-                if (!user) return;
-                setConfirmModal({
-                    isOpen: true,
-                    title: 'Excluir Contato Permanentemente',
-                    message: 'Esta ação não pode ser desfeita. Deseja remover este contato e todas as suas iniciativas?',
-                    onConfirm: async () => {
-                        await db.collection('projects').doc(id).delete();
-                    }
-                });
+            // --- Utils ---
+            const getWhatsAppLink = (phone) => {
+                if (!phone) return null;
+                const numbers = phone.replace(/\D/g, '');
+                if(numbers.length < 10) return null;
+                // Adiciona o 55 caso o usuário não tenha digitado o código do país, apenas o DDD
+                const finalNumber = numbers.startsWith('55') ? numbers : `55${numbers}`;
+                return `https://wa.me/${finalNumber}`;
             };
 
-            const handleAddCustomCategory = () => {
-                setInputValue('');
-                setInputModal({
-                    isOpen: true,
-                    title: 'Adicionar Nova Categoria',
-                    placeholder: 'Ex: Fornecedor Parceiro',
-                    onSubmit: async (label) => {
-                        if (!label) return;
-                        await db.collection('categories').add({ label, color: 'bg-slate-100 text-[#082f37] border-slate-300' });
-                    }
-                });
-            };
-
-            // Derived State
+            // --- Derived State ---
             const allPendingTasks = projects.flatMap(p => 
                 (p.initiatives || []).flatMap(init => 
                     (init.checklist || [])
@@ -287,16 +366,11 @@
                 .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.objective.toLowerCase().includes(searchTerm.toLowerCase()))
                 .filter(p => categoryFilter === 'all' || p.category === categoryFilter);
 
-            const allCategories = [
-                ...CATEGORIES,
-                ...customCategories.map(c => ({ ...c, icon: Tag }))
-            ];
-
+            const allCategories = [...CATEGORIES, ...customCategories.map(c => ({ ...c, icon: Tag }))];
             const getCategoryData = (catId) => allCategories.find(c => c.id === catId) || allCategories[3];
 
-            if (isAuthChecking) {
-                return <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center"><Loader2 size={40} className="text-[#00E08F]" /></div>;
-            }
+            // --- RENDER ---
+            if (isAuthChecking) return <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center"><Loader2 size={40} className="text-[#00E08F]" /></div>;
 
             if (!user) {
                 return (
@@ -317,51 +391,23 @@
                                     <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">E-mail</label>
                                     <div className="relative">
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input 
-                                            type="email" 
-                                            required
-                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all"
-                                            placeholder="seu@email.com"
-                                            value={authForm.email}
-                                            onChange={e => setAuthForm({...authForm, email: e.target.value})}
-                                        />
+                                        <input type="email" required className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all" placeholder="seu@email.com" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Senha</label>
                                     <div className="relative">
                                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input 
-                                            type="password" 
-                                            required
-                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all"
-                                            placeholder="••••••••"
-                                            value={authForm.password}
-                                            onChange={e => setAuthForm({...authForm, password: e.target.value})}
-                                        />
+                                        <input type="password" required className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all" placeholder="••••••••" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} />
                                     </div>
                                 </div>
-                                
-                                {authForm.error && (
-                                    <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium text-center">
-                                        {authForm.error}
-                                    </div>
-                                )}
-
-                                <button 
-                                    type="submit"
-                                    disabled={authForm.loading}
-                                    className="w-full py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20 mt-4 flex justify-center items-center"
-                                >
+                                {authForm.error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium text-center">{authForm.error}</div>}
+                                <button type="submit" disabled={authForm.loading} className="w-full py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20 mt-4 flex justify-center items-center">
                                     {authForm.loading ? <Loader2 size={20} /> : (authForm.isLogin ? 'Entrar' : 'Cadastrar')}
                                 </button>
                             </form>
-
                             <div className="mt-6 text-center">
-                                <button 
-                                    onClick={() => setAuthForm({...authForm, isLogin: !authForm.isLogin, error: ''})}
-                                    className="text-sm font-medium text-slate-500 hover:text-[#082f37] transition-colors"
-                                >
+                                <button onClick={() => setAuthForm({...authForm, isLogin: !authForm.isLogin, error: ''})} className="text-sm font-medium text-slate-500 hover:text-[#082f37] transition-colors">
                                     {authForm.isLogin ? 'Não tem uma conta? Cadastre-se' : 'Já tem uma conta? Faça login'}
                                 </button>
                             </div>
@@ -372,7 +418,8 @@
 
             return (
                 <div className="min-h-screen bg-[#f1f5f9] flex font-sans text-slate-900 pb-20 md:pb-0">
-                    <nav className="hidden md:flex w-64 bg-[#082f37] border-r border-[#104c57] flex-col h-screen sticky top-0 overflow-y-auto z-40 text-white shadow-xl">
+                    {/* Sidebar Desktop */}
+                    <nav className="hidden md:flex w-64 bg-[#082f37] border-r border-[#104c57] flex-col h-screen sticky top-0 overflow-y-auto z-40 text-white shadow-xl no-scrollbar">
                         <div className="p-6 flex-1">
                             <div className="mb-10 hidden md:block">
                                 <h1 className="font-extrabold tracking-widest text-sm uppercase text-white mb-1">Matheus Duarte</h1>
@@ -381,7 +428,6 @@
                                     <span className="text-[#00E08F] text-[10px] tracking-[0.2em] font-semibold uppercase">Consultoria Estratégica</span>
                                 </div>
                             </div>
-
                             <div className="space-y-2">
                                 <button onClick={() => setView('projects')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'projects' ? 'bg-[#104c57] text-[#00E08F] font-bold border-l-4 border-[#00E08F]' : 'text-slate-400 hover:bg-[#104c57]/50 hover:text-white'}`}>
                                     <Users size={20} /> <span className="hidden md:block">Meus Contatos</span>
@@ -413,21 +459,28 @@
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                     <input type="text" placeholder="Pesquisar..." className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00E08F]/50 focus:border-[#082f37] w-full transition-all shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                                 </div>
-                                <button onClick={() => setIsModalOpen(true)} className="bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00E08F]/20 transition-all active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap">
+                                <button onClick={openCreateContact} className="bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-[#00E08F]/20 transition-all active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap">
                                     <Plus size={20} /> Novo Contato
                                 </button>
                             </div>
                         </header>
 
                         {view === 'projects' && (
-                            <div className="flex flex-wrap gap-2 mb-8 items-center text-sm font-medium">
-                                <div className="flex items-center gap-2 text-slate-500 mr-2"><Filter size={16} /> <span>Filtrar:</span></div>
-                                <button onClick={() => setCategoryFilter('all')} className={`px-4 py-1.5 rounded-lg border transition-all ${categoryFilter === 'all' ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>Todos</button>
-                                {allCategories.map(cat => (
-                                    <button key={cat.id} onClick={() => setCategoryFilter(cat.id)} className={`px-4 py-1.5 rounded-lg border transition-all flex items-center gap-2 ${categoryFilter === cat.id ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
-                                        <cat.icon size={14} /> {cat.label}
+                            <div className="flex flex-wrap gap-2 mb-8 items-center text-sm font-medium justify-between">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex items-center gap-2 text-slate-500 mr-2"><Filter size={16} /> <span>Filtrar:</span></div>
+                                    <button onClick={() => setCategoryFilter('all')} className={`px-4 py-1.5 rounded-lg border transition-all ${categoryFilter === 'all' ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>Todos</button>
+                                    {allCategories.map(cat => (
+                                        <button key={cat.id} onClick={() => setCategoryFilter(cat.id)} className={`px-4 py-1.5 rounded-lg border transition-all flex items-center gap-2 ${categoryFilter === cat.id ? 'bg-[#082f37] text-white border-[#082f37] shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                                            <cat.icon size={14} /> {cat.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {expandedProjects.length > 0 && (
+                                    <button onClick={() => setExpandedProjects([])} className="text-[#082f37] bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors ml-auto">
+                                        <Compress size={14} /> Recolher Todos
                                     </button>
-                                ))}
+                                )}
                             </div>
                         )}
 
@@ -436,60 +489,85 @@
                                 {filteredProjects.length === 0 ? (
                                     <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-16 text-center text-slate-400">
                                         <Users size={48} className="mx-auto mb-4 opacity-20 text-[#082f37]" />
-                                        <p className="text-lg">Nenhum registro encontrado.</p>
+                                        <p className="text-lg">Nenhum registo encontrado.</p>
                                     </div>
                                 ) : (
                                     filteredProjects.map(project => {
                                         const catData = getCategoryData(project.category);
+                                        const waLink = getWhatsAppLink(project.phone);
+                                        const linkedProject = project.linkedContactId ? projects.find(p => p.id === project.linkedContactId) : null;
+                                        const isExpanded = expandedProjects.includes(project.id);
+
                                         return (
-                                            <div key={project.id} className="group bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-lg hover:border-[#00E08F]/50 transition-all duration-300">
+                                            <div key={project.id} className={`group bg-white border ${isExpanded ? 'border-[#00E08F]/50 shadow-md' : 'border-slate-200 shadow-sm hover:shadow-lg hover:border-[#00E08F]/30'} rounded-2xl transition-all duration-300`}>
                                                 <div className="p-5 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer" onClick={() => setExpandedProjects(prev => prev.includes(project.id) ? prev.filter(id => id !== project.id) : [...prev, project.id])}>
                                                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center bg-[#082f37]/5 text-[#082f37] border border-[#082f37]/10 shrink-0`}>
                                                         <catData.icon size={26} />
                                                     </div>
-                                                    <div className="flex-1">
+                                                    <div className="flex-1 min-w-0">
                                                         <div className="flex items-center flex-wrap gap-3 mb-1">
-                                                            <h3 className="font-extrabold text-xl text-[#082f37]">{project.name}</h3>
+                                                            <h3 className="font-extrabold text-xl text-[#082f37] truncate">{project.name}</h3>
                                                             <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border ${catData.color}`}>{catData.label}</span>
+                                                            {waLink && (
+                                                                <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-green-500 hover:text-green-600 bg-green-50 p-1.5 rounded-full transition-colors ml-auto md:ml-0" title="Conversar no WhatsApp">
+                                                                    <WhatsApp size={16} />
+                                                                </a>
+                                                            )}
                                                         </div>
-                                                        <p className="text-slate-500 text-sm">{project.objective}</p>
+                                                        <p className="text-slate-500 text-sm truncate">{project.objective}</p>
+                                                        {linkedProject && (
+                                                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1.5 font-medium">
+                                                                <LinkIcon size={10} /> Vinculado a: 
+                                                                <span className="text-[#082f37] hover:underline" onClick={(e) => { e.stopPropagation(); setExpandedProjects([linkedProject.id]); }}>{linkedProject.name}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="flex items-center gap-6">
+                                                    <div className="flex items-center gap-6 mt-3 md:mt-0">
                                                         <div className="text-center md:border-l border-slate-200 md:pl-6">
                                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Iniciativas</p>
                                                             <p className="text-xl font-extrabold text-[#082f37]">{(project.initiatives || []).length}</p>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <button onClick={(e) => { e.stopPropagation(); deleteProject(project.id); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
-                                                            <div className={`text-slate-400 transition-transform ${expandedProjects.includes(project.id) ? 'rotate-180' : ''}`}><ChevronDown /></div>
+                                                        <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg">
+                                                            <button onClick={(e) => { e.stopPropagation(); openEditContact(project); }} className="p-2 text-slate-400 hover:text-blue-500 transition-colors" title="Editar Contato"><Edit2 size={16} /></button>
+                                                            <button onClick={(e) => { e.stopPropagation(); deleteProject(project.id); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="Excluir Contato"><Trash2 size={16} /></button>
+                                                            <div className={`p-2 text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-[#082f37]' : ''}`}><ChevronDown size={18}/></div>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                {expandedProjects.includes(project.id) && (
+                                                {isExpanded && (
                                                     <div className="px-5 pb-5 pt-2 border-t border-slate-100 bg-[#f8fafc] space-y-4 rounded-b-2xl">
                                                         <div className="flex items-center justify-between pt-2">
-                                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><LayoutDashboard size={14} className="text-[#00E08F]" /> Iniciativas Ativas</h4>
+                                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                                                <LayoutDashboard size={14} className="text-[#00E08F]" /> Iniciativas Ativas ({project.name})
+                                                            </h4>
                                                         </div>
                                                         
                                                         {project.initiatives?.map(init => (
-                                                            <div key={init.id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-                                                                <div className="flex items-center justify-between mb-4">
+                                                            <div key={init.id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm group/init">
+                                                                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                                                                     <div className="flex items-center gap-3">
                                                                         <button onClick={() => toggleInitiativeStatus(project.id, init.id)} className={`p-1 rounded-md transition-all ${init.status === 'Concluído' ? 'bg-[#00E08F] text-[#082f37]' : 'bg-slate-50 text-slate-300 border border-slate-200 hover:border-[#082f37]'}`}>
                                                                             {init.status === 'Concluído' ? <Check size={16} /> : <div className="w-4 h-4" />}
                                                                         </button>
                                                                         <div>
                                                                             <h4 className={`font-bold ${init.status === 'Concluído' ? 'text-slate-400 line-through' : 'text-[#082f37]'}`}>{init.title}</h4>
-                                                                            <p className="text-[10px] text-slate-400 font-medium">{init.date}</p>
+                                                                            <p className="text-[10px] text-slate-400 font-medium">Criada em {init.date}</p>
                                                                         </div>
                                                                     </div>
-                                                                    <button onClick={() => openTaskModal(project.id, init.id)} className="text-[11px] bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-[#082f37] font-bold hover:bg-[#00E08F]/10 hover:border-[#00E08F] flex items-center gap-1 transition-all shadow-sm">
-                                                                        <Plus size={14} /> Tarefa
-                                                                    </button>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="opacity-0 group-hover/init:opacity-100 transition-opacity flex items-center bg-slate-50 rounded-lg">
+                                                                            <button onClick={() => openEditInitiative(project.id, init)} className="p-1.5 text-slate-400 hover:text-blue-500" title="Editar Iniciativa"><Edit2 size={14} /></button>
+                                                                            <button onClick={() => confirmDeleteInitiative(project.id, init.id)} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir Iniciativa"><Trash2 size={14} /></button>
+                                                                        </div>
+                                                                        <button onClick={() => openCreateTask(project.id, init.id)} className="text-[11px] bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-[#082f37] font-bold hover:bg-[#00E08F]/10 hover:border-[#00E08F] flex items-center gap-1 transition-all shadow-sm">
+                                                                            <Plus size={14} /> Tarefa
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
 
                                                                 <div className="ml-9 space-y-2 border-l-2 border-slate-100 pl-4">
+                                                                    {init.checklist?.length === 0 && <p className="text-xs text-slate-400 italic py-1">Nenhuma tarefa nesta iniciativa.</p>}
                                                                     {init.checklist?.map(item => {
                                                                         let isOverdue = false;
                                                                         let isToday = false;
@@ -503,8 +581,8 @@
                                                                         }
                                                                         
                                                                         return (
-                                                                            <div key={item.id} className="flex flex-col py-1 group/item">
-                                                                                <div className="flex items-start gap-3">
+                                                                            <div key={item.id} className="flex flex-col py-1 group/task relative">
+                                                                                <div className="flex items-start gap-3 w-full pr-16">
                                                                                     <button onClick={() => toggleChecklistItem(project.id, init.id, item.id)} className={`mt-0.5 transition-all ${item.completed ? 'text-[#00E08F]' : 'text-slate-300 hover:text-[#082f37]'}`}>
                                                                                         {item.completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                                                                                     </button>
@@ -520,6 +598,12 @@
                                                                                         )}
                                                                                     </div>
                                                                                 </div>
+                                                                                {/* Ações da Tarefa (Aparece no hover no Desktop, fica discreto no Mobile) */}
+                                                                                <div className="absolute right-0 top-1 md:opacity-0 group-hover/task:opacity-100 transition-opacity flex items-center bg-white md:bg-slate-50 shadow-sm border border-slate-100 rounded-md">
+                                                                                    <button onClick={() => openEditTask(project.id, init.id, item)} className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors"><Edit2 size={12} /></button>
+                                                                                    <div className="w-px h-3 bg-slate-200"></div>
+                                                                                    <button onClick={() => confirmDeleteTask(project.id, init.id, item.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+                                                                                </div>
                                                                             </div>
                                                                         )
                                                                     })}
@@ -527,8 +611,8 @@
                                                             </div>
                                                         ))}
                                                         
-                                                        <button onClick={() => addInitiative(project.id)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold hover:border-[#00E08F] hover:text-[#082f37] hover:bg-white transition-all flex items-center justify-center gap-2 mt-2">
-                                                            <Plus size={20} /> Nova Iniciativa para {project.name}
+                                                        <button onClick={() => openCreateInitiative(project.id)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold hover:border-[#00E08F] hover:text-[#082f37] hover:bg-white transition-all flex items-center justify-center gap-2 mt-2">
+                                                            <Plus size={20} /> Nova Iniciativa de Trabalho
                                                         </button>
                                                     </div>
                                                 )}
@@ -597,39 +681,56 @@
                         )}
                     </main>
 
-                    {/* Modal Novo Contato */}
-                    {isModalOpen && (
+                    {/* MODAL: CONTATO (CRIAR E EDITAR) */}
+                    {contactModal.isOpen && (
                         <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
+                            <div className="bg-white rounded-3xl w-full max-w-lg overflow-y-auto max-h-[90vh] shadow-2xl no-scrollbar">
                                 <div className="p-8">
-                                    <h2 className="text-2xl font-extrabold mb-6 text-[#082f37]">Novo Contato</h2>
-                                    <div className="space-y-6">
+                                    <h2 className="text-2xl font-extrabold mb-6 text-[#082f37]">
+                                        {contactModal.mode === 'create' ? 'Novo Contato' : 'Editar Contato'}
+                                    </h2>
+                                    <div className="space-y-5">
                                         <div>
                                             <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Nome ou Empresa</label>
-                                            <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium" placeholder="Digite o nome..." value={newProject.name} onChange={(e) => setNewProject({...newProject, name: e.target.value})} />
+                                            <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium" placeholder="Digite o nome..." value={contactModal.data.name} onChange={(e) => setContactModal({...contactModal, data: {...contactModal.data, name: e.target.value}})} />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">WhatsApp (DDD+Núm)</label>
+                                                <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium" placeholder="Ex: 11999999999" value={contactModal.data.phone} onChange={(e) => setContactModal({...contactModal, data: {...contactModal.data, phone: e.target.value}})} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Indicado por (Vínculo)</label>
+                                                <select className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium appearance-none text-slate-700" value={contactModal.data.linkedContactId} onChange={(e) => setContactModal({...contactModal, data: {...contactModal.data, linkedContactId: e.target.value}})}>
+                                                    <option value="">Nenhum vínculo</option>
+                                                    {projects.filter(p => p.id !== contactModal.data.id).map(p => (
+                                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Categoria</label>
                                             <div className="grid grid-cols-2 gap-2 mb-3">
                                                 {allCategories.map(cat => (
-                                                    <button key={cat.id} type="button" onClick={() => setNewProject({...newProject, category: cat.id})} className={`flex items-center gap-2 p-3 rounded-xl border text-sm transition-all ${newProject.category === cat.id ? 'border-[#082f37] bg-[#082f37] text-white font-bold' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                                                        <cat.icon size={16} /> {cat.label}
+                                                    <button key={cat.id} type="button" onClick={() => setContactModal({...contactModal, data: {...contactModal.data, category: cat.id}})} className={`flex items-center gap-2 p-3 rounded-xl border text-sm transition-all ${contactModal.data.category === cat.id ? 'border-[#082f37] bg-[#082f37] text-white font-bold' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                                                        <cat.icon size={16} /> <span className="truncate">{cat.label}</span>
                                                     </button>
                                                 ))}
                                             </div>
-                                            <button type="button" onClick={handleAddCustomCategory} className="text-xs text-[#00E08F] font-bold flex items-center gap-1 hover:text-[#00c980] transition-colors">
+                                            <button type="button" onClick={() => setCategoryModal({isOpen: true, label: ''})} className="text-xs text-[#00E08F] font-bold flex items-center gap-1 hover:text-[#00c980] transition-colors">
                                                 <Plus size={14} /> Adicionar Nova Categoria
                                             </button>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Objetivo Principal</label>
-                                            <textarea className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium" placeholder="Qual o propósito deste contato?" rows="3" value={newProject.objective} onChange={(e) => setNewProject({...newProject, objective: e.target.value})}></textarea>
+                                            <textarea className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium" placeholder="Qual o propósito deste contato?" rows="2" value={contactModal.data.objective} onChange={(e) => setContactModal({...contactModal, data: {...contactModal.data, objective: e.target.value}})}></textarea>
                                         </div>
                                     </div>
-                                    <div className="flex gap-4 mt-8">
-                                        <button onClick={() => setIsModalOpen(false)} className="flex-1 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all" disabled={isSubmitting}>Cancelar</button>
-                                        <button onClick={handleAddProject} disabled={isSubmitting || !newProject.name} className="flex-1 px-6 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] rounded-xl font-bold shadow-lg shadow-[#00E08F]/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                            {isSubmitting ? <Loader2 size={18} /> : 'Criar Contato'}
+                                    <div className="flex gap-4 mt-8 pt-4 border-t border-slate-100">
+                                        <button onClick={() => setContactModal({...contactModal, isOpen: false})} className="flex-1 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all" disabled={isSubmitting}>Cancelar</button>
+                                        <button onClick={handleSaveContact} disabled={isSubmitting || !contactModal.data.name} className="flex-1 px-6 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] rounded-xl font-bold shadow-lg shadow-[#00E08F]/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                                            {isSubmitting ? <Loader2 size={18} /> : 'Salvar Contato'}
                                         </button>
                                     </div>
                                 </div>
@@ -637,46 +738,60 @@
                         </div>
                     )}
 
-                    {/* Modal Entrada de Texto (Iniciativas e Categorias) */}
-                    {inputModal.isOpen && (
+                    {/* MODAL: INICIATIVA (CRIAR E EDITAR) */}
+                    {initiativeModal.isOpen && (
                         <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
                             <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl">
-                                <h3 className="font-extrabold text-[#082f37] mb-6 text-xl">{inputModal.title}</h3>
-                                <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all mb-6 font-medium text-slate-800" placeholder={inputModal.placeholder} value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { inputModal.onSubmit(inputValue); setInputModal({ isOpen: false, title: '', placeholder: '', onSubmit: null }); } }} />
+                                <h3 className="font-extrabold text-[#082f37] mb-6 text-xl">{initiativeModal.mode === 'create' ? 'Nova Iniciativa' : 'Editar Iniciativa'}</h3>
+                                <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all mb-6 font-medium text-slate-800" placeholder="Ex: Proposta Comercial" value={initiativeModal.data.title} onChange={e => setInitiativeModal({...initiativeModal, data: {...initiativeModal.data, title: e.target.value}})} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveInitiative(); }} />
                                 <div className="flex gap-3">
-                                    <button onClick={() => setInputModal({ isOpen: false, title: '', placeholder: '', onSubmit: null })} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all">Cancelar</button>
-                                    <button onClick={() => { inputModal.onSubmit(inputValue); setInputModal({ isOpen: false, title: '', placeholder: '', onSubmit: null }); }} className="flex-1 px-4 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20">Salvar</button>
+                                    <button onClick={() => setInitiativeModal({...initiativeModal, isOpen: false})} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all">Cancelar</button>
+                                    <button onClick={handleSaveInitiative} disabled={!initiativeModal.data.title} className="flex-1 px-4 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20 disabled:opacity-50">Salvar</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Modal Adicionar Tarefa */}
+                    {/* MODAL: TAREFA (CRIAR E EDITAR) */}
                     {taskModal.isOpen && (
                         <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
                             <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl">
-                                <h3 className="font-extrabold text-[#082f37] mb-6 text-xl">Nova Tarefa</h3>
+                                <h3 className="font-extrabold text-[#082f37] mb-6 text-xl">{taskModal.mode === 'create' ? 'Nova Tarefa' : 'Editar Tarefa'}</h3>
                                 <div className="space-y-4 mb-6">
                                     <div>
                                         <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">O que precisa ser feito?</label>
-                                        <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" placeholder="Ex: Agendar reunião de alinhamento" value={taskForm.text} onChange={e => setTaskForm({...taskForm, text: e.target.value})} />
+                                        <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" placeholder="Ex: Agendar reunião de alinhamento" value={taskModal.data.text} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, text: e.target.value}})} />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold uppercase text-slate-500 tracking-widest mb-2">Previsão de Conclusão (Opcional)</label>
-                                        <input type="date" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" value={taskForm.dueDate} onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} />
+                                        <input type="date" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all font-medium text-slate-800" value={taskModal.data.dueDate} onChange={e => setTaskModal({...taskModal, data: {...taskModal.data, dueDate: e.target.value}})} />
                                     </div>
                                 </div>
                                 <div className="flex gap-3">
-                                    <button onClick={() => setTaskModal({ isOpen: false, projectId: '', initiativeId: '' })} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all">Cancelar</button>
-                                    <button onClick={handleAddTask} disabled={!taskForm.text} className="flex-1 px-4 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20 disabled:opacity-50">Salvar</button>
+                                    <button onClick={() => setTaskModal({...taskModal, isOpen: false})} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all">Cancelar</button>
+                                    <button onClick={handleSaveTask} disabled={!taskModal.data.text} className="flex-1 px-4 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20 disabled:opacity-50">Salvar</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Modal de Confirmação (Exclusão) */}
+                    {/* MODAL: NOVA CATEGORIA */}
+                    {categoryModal.isOpen && (
+                        <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
+                            <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl">
+                                <h3 className="font-extrabold text-[#082f37] mb-6 text-xl">Nova Categoria</h3>
+                                <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#00E08F] focus:border-[#082f37] outline-none transition-all mb-6 font-medium text-slate-800" placeholder="Ex: Agência, Mentor..." value={categoryModal.label} onChange={e => setCategoryModal({...categoryModal, label: e.target.value})} onKeyDown={(e) => { if (e.key === 'Enter') handleAddCustomCategory(); }} />
+                                <div className="flex gap-3">
+                                    <button onClick={() => setCategoryModal({ isOpen: false, label: '' })} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all">Cancelar</button>
+                                    <button onClick={handleAddCustomCategory} disabled={!categoryModal.label} className="flex-1 px-4 py-3 bg-[#00E08F] hover:bg-[#00c980] text-[#082f37] font-bold rounded-xl transition-all shadow-lg shadow-[#00E08F]/20 disabled:opacity-50">Salvar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL: CONFIRMAÇÃO DE EXCLUSÃO GENÉRICO */}
                     {confirmModal.isOpen && (
-                        <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+                        <div className="fixed inset-0 bg-[#082f37]/80 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
                             <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl">
                                 <h3 className="font-extrabold text-[#082f37] mb-2 text-xl">{confirmModal.title}</h3>
                                 <p className="text-slate-500 font-medium text-sm mb-8 leading-relaxed">{confirmModal.message}</p>
